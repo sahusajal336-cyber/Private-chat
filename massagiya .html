@@ -1,0 +1,231 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Private Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#020617">
+
+<style>
+*{box-sizing:border-box;font-family:Segoe UI,Arial;}
+body{
+  margin:0;
+  background:#0f172a;
+  color:white;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+.app{
+  width:100%;
+  max-width:420px;
+  background:#020617;
+  border-radius:18px;
+  box-shadow:0 0 30px #000;
+  padding:15px;
+  display:flex;
+  flex-direction:column;
+}
+.header{text-align:center;padding:10px;font-size:20px;font-weight:bold;}
+.uidBox{
+  background:#020617;
+  border:1px solid #334155;
+  padding:10px;
+  border-radius:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.uidBox span{font-size:18px;}
+button{
+  background:#2563eb;
+  border:none;
+  color:white;
+  padding:8px 12px;
+  border-radius:8px;
+  cursor:pointer;
+}
+input{
+  background:#020617;
+  border:1px solid #334155;
+  color:white;
+  padding:8px;
+  border-radius:8px;
+  width:100%;
+}
+.connect{display:flex;gap:6px;margin-top:8px;}
+.status{text-align:center;font-size:12px;color:#94a3b8;}
+.chatList{
+  border:1px solid #334155;
+  border-radius:10px;
+  padding:5px;
+  margin:8px 0;
+  max-height:90px;
+  overflow:auto;
+}
+.chatItem{padding:6px;border-bottom:1px solid #334155;cursor:pointer;}
+.chatItem:hover{background:#1e293b;}
+.chat{flex:1;overflow-y:auto;margin:6px 0;}
+.msg{max-width:70%;padding:8px;margin:6px;border-radius:10px;}
+.me{background:#2563eb;margin-left:auto;}
+.friend{background:#334155;}
+.sendBox{display:flex;gap:6px;}
+
+#splash{
+  position:fixed;
+  inset:0;
+  background:#020617;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  z-index:9999;
+}
+#splash img{width:120px;border-radius:22px;}
+</style>
+</head>
+
+<body>
+
+<div id="splash">
+  <h2>Private Chat</h2>
+</div>
+
+<div class="app">
+
+<div class="header">🔐 Private Chat</div>
+
+<div class="uidBox">
+  <span id="uid">000000</span>
+  <button onclick="copyId()">Copy</button>
+</div>
+
+<div class="connect">
+  <input id="friendId" placeholder="Enter Friend ID">
+  <button onclick="connectFriend()">Connect</button>
+</div>
+
+<button onclick="installApp()">📲 Install App</button>
+
+<div class="status" id="status">Waiting...</div>
+<div class="chatList" id="chatList"></div>
+<div class="chat" id="chat"></div>
+
+<div class="sendBox">
+  <input id="msg" placeholder="Type message">
+  <button onclick="sendMsg()">Send</button>
+</div>
+
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+<script>
+window.onload=()=>setTimeout(()=>splash.style.display="none",1200);
+
+// INSTALL
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  deferredPrompt = e;
+});
+function installApp(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(()=> deferredPrompt=null);
+  }
+}
+
+// ID
+function makeId(){
+  let time = Date.now().toString().slice(-3);
+  let rand = Math.floor(100 + Math.random() * 900);
+  return time + rand;
+}
+
+let myId = localStorage.getItem("myChatId");
+if(!myId){
+  myId = makeId();
+  localStorage.setItem("myChatId", myId);
+}
+uid.innerText = myId;
+
+let peer = new Peer(myId);
+let conn,currentFriend="";
+let friends = JSON.parse(localStorage.getItem("friends")||"[]");
+renderFriends();
+
+peer.on('connection', c=>{
+  conn=c;
+  currentFriend=c.peer;
+  saveFriend(currentFriend);
+  ready();
+});
+
+function connectFriend(){
+  let id=friendId.value;
+  conn=peer.connect(id);
+  conn.on('open',()=>{
+    currentFriend=id;
+    saveFriend(id);
+    ready();
+  });
+}
+
+function ready(){
+  status.innerText="Connected to "+currentFriend;
+  conn.on('data',d=>chatMsg("friend",d));
+}
+
+function sendMsg(){
+  if(!conn||!conn.open) return;
+  conn.send(msg.value);
+  chatMsg("me",msg.value);
+  msg.value="";
+}
+
+function chatMsg(t,txt){
+  let d=document.createElement("div");
+  d.className="msg "+t;
+  d.innerText=txt;
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+function copyId(){
+  navigator.clipboard.writeText(myId);
+  alert("Your ID: "+myId);
+}
+
+function saveFriend(id){
+  if(!friends.includes(id)){
+    friends.push(id);
+    localStorage.setItem("friends",JSON.stringify(friends));
+    renderFriends();
+  }
+}
+
+function renderFriends(){
+  chatList.innerHTML="";
+  friends.forEach(f=>{
+    let d=document.createElement("div");
+    d.className="chatItem";
+    d.innerText="Chat with "+f;
+    d.onclick=()=>connectFromList(f);
+    chatList.appendChild(d);
+  });
+}
+
+function connectFromList(id){
+  chat.innerHTML="";
+  conn=peer.connect(id);
+  conn.on('open',()=>{
+    currentFriend=id;
+    ready();
+  });
+}
+</script>
+
+</body>
+</html>
